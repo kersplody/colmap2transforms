@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import re
 import warnings
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Tuple
 
-import numpy as np
 import argparse
+import numpy as np
 
 
 class HelpOnErrorArgumentParser(argparse.ArgumentParser):
@@ -31,6 +31,45 @@ class HelpOnErrorArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         self.print_help()
         self.exit(2, f"\nerror: {message}\n")
+
+
+COLMAP_BINARY_MODEL_FILES = (
+    "cameras.bin",
+    "images.bin",
+    "points3D.bin",
+    "frames.bin",
+    "rigs.bin",
+)
+
+COLMAP_TEXT_MODEL_FILES = (
+    "cameras.txt",
+    "images.txt",
+    "points3D.txt",
+    "frames.txt",
+    "rigs.txt",
+)
+
+COLMAP_MODEL_FILES = COLMAP_BINARY_MODEL_FILES + COLMAP_TEXT_MODEL_FILES
+
+
+def ensure_output_file_writable(path: Path, force: bool = False) -> None:
+    """Reject overwriting an existing file unless force is enabled."""
+    if path.exists() and not force:
+        raise FileExistsError(f"Refusing to overwrite existing file: {path}. Pass --force to overwrite it.")
+
+
+def prepare_model_output_dir(output_dir: Path, force: bool = False) -> None:
+    """Create the output dir and protect or clear known COLMAP model files."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    existing = [output_dir / name for name in COLMAP_MODEL_FILES if (output_dir / name).exists()]
+    if existing and not force:
+        existing_names = ", ".join(path.name for path in existing)
+        raise FileExistsError(
+            f"Refusing to overwrite existing model files in {output_dir}: {existing_names}. Pass --force to overwrite them."
+        )
+    if force:
+        for path in existing:
+            path.unlink()
 
 
 def parse_colmap_camera_params(camera) -> Dict[str, Any]:

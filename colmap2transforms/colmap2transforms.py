@@ -30,6 +30,7 @@ import pycolmap
 from .common import (
     HelpOnErrorArgumentParser,
     colmap_to_nerfstudio_pose,
+    ensure_output_file_writable,
     extract_frame_number,
     parse_colmap_camera_params,
     parse_frame_drop_spec,
@@ -118,6 +119,7 @@ class CreateTransforms:
     keep_original_world_coordinate: bool = False
     use_single_camera_mode: bool = True
     drop_frames: str | None = None
+    force: bool = False
 
     def main(self) -> None:
         output_file = self.output_file
@@ -125,6 +127,7 @@ class CreateTransforms:
             output_file = output_file / "transforms.json"
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
+        ensure_output_file_writable(output_file, force=self.force)
         transforms = create_transforms_data(
             model_dir=self.model_dir,
             image_dir=self.image_dir,
@@ -137,7 +140,11 @@ class CreateTransforms:
 
 
 def entrypoint() -> None:
-    parser = HelpOnErrorArgumentParser(description=__doc__)
+    parser = HelpOnErrorArgumentParser(
+        description=__doc__,
+        epilog="Typical usage:\n  colmap2transforms colmap/sparse/0 transforms.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("model_dir_positional", nargs="?", help="COLMAP model directory containing cameras/images as .bin or .txt files")
     parser.add_argument("output_file_positional", nargs="?", help="Output transforms.json file or directory")
     parser.add_argument(
@@ -153,6 +160,7 @@ def entrypoint() -> None:
         default=None,
         help="Comma-separated frame numbers or ranges to drop based on trailing digits in file names, e.g. 1,2,4-5,8-10",
     )
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing output file")
     parser.add_argument(
         "--keep_original_world_coordinate",
         "--keep-original-world-coordinate",
@@ -179,6 +187,7 @@ def entrypoint() -> None:
         keep_original_world_coordinate=args.keep_original_world_coordinate,
         use_single_camera_mode=args.use_single_camera_mode,
         drop_frames=args.drop_frames,
+        force=args.force,
     ).main()
 
 

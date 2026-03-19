@@ -11,8 +11,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from colmap2transforms.common import extract_frame_number, parse_frame_drop_spec
-from colmap2transforms.colmap2transforms import create_transforms_data
-from colmap2transforms.transforms2colmap import create_colmap_data
+from colmap2transforms.colmap2transforms import CreateTransforms, create_transforms_data
+from colmap2transforms.transforms2colmap import CreateColmap, create_colmap_data
 
 
 def _source_path() -> Path:
@@ -56,6 +56,10 @@ def _assert_round_trip_matches(
 
 class RoundTripTest(unittest.TestCase):
     def test_cli_no_args_prints_help(self) -> None:
+        expected_examples = {
+            "colmap2transforms.colmap2transforms": "colmap2transforms colmap/sparse/0 transforms.json",
+            "colmap2transforms.transforms2colmap": "transforms2colmap transforms.json colmap/sparse/0",
+        }
         for module_name in ("colmap2transforms.colmap2transforms", "colmap2transforms.transforms2colmap"):
             result = subprocess.run(
                 [sys.executable, "-m", module_name],
@@ -66,6 +70,7 @@ class RoundTripTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0)
             self.assertIn("usage:", result.stdout)
+            self.assertIn(expected_examples[module_name], result.stdout)
             self.assertNotIn("Traceback", result.stderr)
 
     def test_cli_bad_args_print_help(self) -> None:
@@ -81,6 +86,34 @@ class RoundTripTest(unittest.TestCase):
             self.assertIn("usage:", result.stdout)
             self.assertIn("error:", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
+
+    def test_colmap2transforms_refuses_to_overwrite_without_force(self) -> None:
+        source_path = _source_path()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            output_file = temp_dir_path / "transforms.json"
+            create_colmap_data(source_path, model_dir)
+            output_file.write_text("existing", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                CreateTransforms(model_dir=model_dir, output_file=output_file).main()
+
+            CreateTransforms(model_dir=model_dir, output_file=output_file, force=True).main()
+            self.assertIn('"frames"', output_file.read_text(encoding="utf-8"))
+
+    def test_transforms2colmap_refuses_to_overwrite_without_force(self) -> None:
+        source_path = _source_path()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "sparse"
+            create_colmap_data(source_path, model_dir)
+
+            with self.assertRaises(FileExistsError):
+                CreateColmap(transforms=source_path, output_dir=model_dir).main()
+
+            CreateColmap(transforms=source_path, output_dir=model_dir, force_txt=True, force=True).main()
+            self.assertTrue((model_dir / "cameras.txt").exists())
+            self.assertFalse((model_dir / "cameras.bin").exists())
 
     def test_drop_frame_helpers_match_zero_padded_names(self) -> None:
         self.assertEqual(parse_frame_drop_spec("1,2,4-5"), {1, 2, 4, 5})

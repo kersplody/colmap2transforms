@@ -33,6 +33,7 @@ from .common import (
     extract_frame_number,
     nerfstudio_to_colmap_pose,
     parse_frame_drop_spec,
+    prepare_model_output_dir,
     relative_image_name,
     warn_for_missing_dropped_frames,
 )
@@ -117,6 +118,7 @@ def create_colmap_data(
     image_dir: str = "./images",
     force_txt: bool = False,
     drop_frames: str | None = None,
+    force: bool = False,
 ) -> None:
     """Create a minimal COLMAP sparse model from a transforms.json file."""
     meta = _load_json(transforms_path)
@@ -135,7 +137,7 @@ def create_colmap_data(
     if len(frames) == 0:
         raise ValueError("No frames remain after applying drop_frames")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    prepare_model_output_dir(output_dir, force=force)
 
     applied_transform = meta.get("applied_transform")
     applied_scale = float(meta.get("applied_scale", 1.0))
@@ -206,6 +208,7 @@ class CreateColmap:
     image_dir: str = "./images"
     force_txt: bool = False
     drop_frames: str | None = None
+    force: bool = False
 
     def main(self) -> None:
         transforms_path = self.transforms
@@ -217,18 +220,24 @@ class CreateColmap:
             image_dir=self.image_dir,
             force_txt=self.force_txt,
             drop_frames=self.drop_frames,
+            force=self.force,
         )
         print(f"Saved COLMAP sparse model to {self.output_dir}")
 
 
 def entrypoint() -> None:
-    parser = HelpOnErrorArgumentParser(description=__doc__)
+    parser = HelpOnErrorArgumentParser(
+        description=__doc__,
+        epilog="Typical usage:\n  transforms2colmap transforms.json colmap/sparse/0",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("transforms_positional", nargs="?", help="Input transforms.json file or its parent directory")
     parser.add_argument("output_dir_positional", nargs="?", help="Output COLMAP sparse model directory")
     parser.add_argument("--transforms", default=None, help="Input transforms.json file or its parent directory")
     parser.add_argument("--output_dir", "--output-dir", default=None, help="Output COLMAP sparse model directory")
     parser.add_argument("--image_dir", "--image-dir", default="./images", help="Prefix stripped from frame file paths")
     parser.add_argument("--txt", action="store_true", help="Write COLMAP text model files instead of binary files")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing COLMAP model files in the output directory")
     parser.add_argument(
         "--drop-frames",
         default=None,
@@ -246,6 +255,7 @@ def entrypoint() -> None:
         image_dir=args.image_dir,
         force_txt=args.txt,
         drop_frames=args.drop_frames,
+        force=args.force,
     ).main()
 
 
