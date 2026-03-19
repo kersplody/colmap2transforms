@@ -22,6 +22,15 @@ from pathlib import PurePosixPath
 from typing import Any, Dict, Tuple
 
 import numpy as np
+import argparse
+
+
+class HelpOnErrorArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that prints full help text on parse errors."""
+
+    def error(self, message: str) -> None:
+        self.print_help()
+        self.exit(2, f"\nerror: {message}\n")
 
 
 def parse_colmap_camera_params(camera) -> Dict[str, Any]:

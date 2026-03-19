@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -54,6 +55,33 @@ def _assert_round_trip_matches(
 
 
 class RoundTripTest(unittest.TestCase):
+    def test_cli_no_args_prints_help(self) -> None:
+        for module_name in ("colmap2transforms.colmap2transforms", "colmap2transforms.transforms2colmap"):
+            result = subprocess.run(
+                [sys.executable, "-m", module_name],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("usage:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_cli_bad_args_print_help(self) -> None:
+        for module_name in ("colmap2transforms.colmap2transforms", "colmap2transforms.transforms2colmap"):
+            result = subprocess.run(
+                [sys.executable, "-m", module_name, "--definitely-not-a-real-flag"],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("usage:", result.stdout)
+            self.assertIn("error:", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
     def test_drop_frame_helpers_match_zero_padded_names(self) -> None:
         self.assertEqual(parse_frame_drop_spec("1,2,4-5"), {1, 2, 4, 5})
         self.assertEqual(extract_frame_number("images_00001.png"), 1)

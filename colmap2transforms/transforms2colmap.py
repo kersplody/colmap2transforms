@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Tuple
@@ -28,6 +29,7 @@ import numpy as np
 import pycolmap
 
 from .common import (
+    HelpOnErrorArgumentParser,
     extract_frame_number,
     nerfstudio_to_colmap_pose,
     parse_frame_drop_spec,
@@ -220,7 +222,7 @@ class CreateColmap:
 
 
 def entrypoint() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = HelpOnErrorArgumentParser(description=__doc__)
     parser.add_argument("transforms_positional", nargs="?", help="Input transforms.json file or its parent directory")
     parser.add_argument("output_dir_positional", nargs="?", help="Output COLMAP sparse model directory")
     parser.add_argument("--transforms", default=None, help="Input transforms.json file or its parent directory")
@@ -232,6 +234,9 @@ def entrypoint() -> None:
         default=None,
         help="Comma-separated frame numbers or ranges to drop based on trailing digits in file names, e.g. 1,2,4-5,8-10",
     )
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
     args = parser.parse_args()
     transforms = args.transforms if args.transforms is not None else (args.transforms_positional or "transforms.json")
     output_dir = args.output_dir if args.output_dir is not None else (args.output_dir_positional or ".")

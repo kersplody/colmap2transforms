@@ -14,7 +14,15 @@
 
 """Standalone COLMAP <-> transforms.json conversion utilities."""
 
-from .colmap2transforms import create_transforms_data
-from .transforms2colmap import create_colmap_data
+def create_transforms_data(*args, **kwargs):
+    from .colmap2transforms import create_transforms_data as _create_transforms_data
+
+    return _create_transforms_data(*args, **kwargs)
+
+
+def create_colmap_data(*args, **kwargs):
+    from .transforms2colmap import create_colmap_data as _create_colmap_data
+
+    return _create_colmap_data(*args, **kwargs)
 
 __all__ = ["create_colmap_data", "create_transforms_data"]

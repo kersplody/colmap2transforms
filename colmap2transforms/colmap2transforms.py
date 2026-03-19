@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
@@ -27,6 +28,7 @@ from typing import Any, Dict
 import pycolmap
 
 from .common import (
+    HelpOnErrorArgumentParser,
     colmap_to_nerfstudio_pose,
     extract_frame_number,
     parse_colmap_camera_params,
@@ -135,7 +137,7 @@ class CreateTransforms:
 
 
 def entrypoint() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = HelpOnErrorArgumentParser(description=__doc__)
     parser.add_argument("model_dir_positional", nargs="?", help="COLMAP model directory containing cameras/images as .bin or .txt files")
     parser.add_argument("output_file_positional", nargs="?", help="Output transforms.json file or directory")
     parser.add_argument(
@@ -164,6 +166,9 @@ def entrypoint() -> None:
         default=True,
         help="Write shared camera intrinsics once when possible",
     )
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
     args = parser.parse_args()
     model_dir = args.model_dir if args.model_dir is not None else (args.model_dir_positional or ".")
     output_file = args.output_file if args.output_file is not None else (args.output_file_positional or ".")
