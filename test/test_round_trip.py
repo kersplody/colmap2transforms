@@ -1,0 +1,189 @@
+import json
+import sys
+import tempfile
+import unittest
+import warnings
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from colmap2transforms.common import extract_frame_number, parse_frame_drop_spec
+from colmap2transforms.colmap2transforms import create_transforms_data
+from colmap2transforms.transforms2colmap import create_colmap_data
+
+
+def _source_path() -> Path:
+    return Path(__file__).with_name("transforms.json")
+
+
+def _source_data() -> dict:
+    return json.loads(_source_path().read_text(encoding="utf-8"))
+
+
+def _image_name(path: str) -> str:
+    return path.replace("\\", "/").split("/")[-1]
+
+
+def _remaining_frames(source: dict, dropped: set[int]) -> list[dict]:
+    return [frame for frame in source["frames"] if extract_frame_number(frame["file_path"]) not in dropped]
+
+
+def _assert_round_trip_matches(
+    testcase: unittest.TestCase,
+    source: dict,
+    round_tripped: dict,
+) -> None:
+    testcase.assertEqual(len(round_tripped["frames"]), len(source["frames"]))
+    testcase.assertNotIn("applied_transform", round_tripped)
+
+    for index, (expected_frame, actual_frame) in enumerate(zip(source["frames"], round_tripped["frames"]), start=1):
+        testcase.assertEqual(actual_frame["colmap_im_id"], index)
+        testcase.assertEqual(_image_name(actual_frame["file_path"]), _image_name(expected_frame["file_path"]))
+        testcase.assertEqual(actual_frame["w"], expected_frame["w"])
+        testcase.assertEqual(actual_frame["h"], expected_frame["h"])
+        testcase.assertEqual(actual_frame["camera_model"], "OPENCV")
+
+        for key in ("fl_x", "fl_y", "cx", "cy", "k1", "k2"):
+            testcase.assertAlmostEqual(actual_frame[key], expected_frame[key], places=6)
+
+        testcase.assertEqual(actual_frame["p1"], 0.0)
+        testcase.assertEqual(actual_frame["p2"], 0.0)
+        np.testing.assert_allclose(actual_frame["transform_matrix"], expected_frame["transform_matrix"], atol=1e-9)
+
+
+class RoundTripTest(unittest.TestCase):
+    def test_drop_frame_helpers_match_zero_padded_names(self) -> None:
+        self.assertEqual(parse_frame_drop_spec("1,2,4-5"), {1, 2, 4, 5})
+        self.assertEqual(extract_frame_number("images_00001.png"), 1)
+        self.assertEqual(extract_frame_number("nested/path/frame01475.png"), 1475)
+
+    def test_transforms_round_trip_from_binary_model(self) -> None:
+        source_path = _source_path()
+        source = _source_data()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+
+            create_colmap_data(source_path, model_dir)
+
+            self.assertTrue((model_dir / "cameras.bin").exists())
+            self.assertTrue((model_dir / "images.bin").exists())
+            self.assertTrue((model_dir / "points3D.bin").exists())
+
+            round_tripped = create_transforms_data(model_dir, keep_original_world_coordinate=True)
+
+        _assert_round_trip_matches(self, source, round_tripped)
+
+    def test_transforms_round_trip_from_text_model(self) -> None:
+        source_path = _source_path()
+        source = _source_data()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+
+            create_colmap_data(source_path, model_dir, force_txt=True)
+
+            self.assertTrue((model_dir / "cameras.txt").exists())
+            self.assertTrue((model_dir / "images.txt").exists())
+            self.assertTrue((model_dir / "points3D.txt").exists())
+
+            round_tripped = create_transforms_data(model_dir, keep_original_world_coordinate=True)
+
+        _assert_round_trip_matches(self, source, round_tripped)
+
+    def test_binary_model_is_preferred_over_text_model(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+
+            create_colmap_data(source_path, model_dir)
+            (model_dir / "cameras.txt").write_text("not a valid camera model\n", encoding="utf-8")
+            (model_dir / "images.txt").write_text("not a valid image model\n", encoding="utf-8")
+
+            round_tripped = create_transforms_data(model_dir, keep_original_world_coordinate=True)
+
+        self.assertEqual(len(round_tripped["frames"]), 1464)
+
+    def test_missing_drop_frames_warns_for_transforms_to_colmap(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "sparse"
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                create_colmap_data(source_path, model_dir, drop_frames="999999")
+
+        self.assertTrue(any("Requested drop_frames did not match any input frames: 999999" in str(item.message) for item in caught))
+
+    def test_missing_drop_frames_warns_for_colmap_to_transforms(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            create_colmap_data(source_path, model_dir)
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                create_transforms_data(model_dir, keep_original_world_coordinate=True, drop_frames="999999")
+
+        self.assertTrue(any("Requested drop_frames did not match any input frames: 999999" in str(item.message) for item in caught))
+
+    def test_partial_range_drop_does_not_warn(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "sparse"
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                create_colmap_data(source_path, model_dir, drop_frames="1400-2000")
+
+        self.assertEqual(caught, [])
+
+    def test_drop_frames_in_transforms_to_colmap(self) -> None:
+        source_path = _source_path()
+        source = _source_data()
+        dropped = parse_frame_drop_spec("1,2,4-5,8-10,100,1524")
+        expected_frames = _remaining_frames(source, dropped)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "sparse"
+            create_colmap_data(source_path, model_dir, drop_frames="1,2,4-5,8-10,100,1524")
+            round_tripped = create_transforms_data(model_dir, keep_original_world_coordinate=True)
+
+        self.assertEqual(len(round_tripped["frames"]), len(expected_frames))
+        self.assertEqual(
+            [_image_name(frame["file_path"]) for frame in round_tripped["frames"]],
+            [_image_name(frame["file_path"]) for frame in expected_frames],
+        )
+
+    def test_drop_frames_in_colmap_to_transforms(self) -> None:
+        source_path = _source_path()
+        source = _source_data()
+        dropped = parse_frame_drop_spec("1,2,4-5,8-10,100,1524")
+        expected_frames = _remaining_frames(source, dropped)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "sparse"
+            create_colmap_data(source_path, model_dir)
+            round_tripped = create_transforms_data(
+                model_dir,
+                keep_original_world_coordinate=True,
+                drop_frames="1,2,4-5,8-10,100,1524",
+            )
+
+        self.assertEqual(len(round_tripped["frames"]), len(expected_frames))
+        self.assertEqual(
+            [_image_name(frame["file_path"]) for frame in round_tripped["frames"]],
+            [_image_name(frame["file_path"]) for frame in expected_frames],
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
