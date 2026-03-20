@@ -234,8 +234,8 @@ def entrypoint() -> None:
     parser.add_argument("transforms_positional", nargs="?", help="Input transforms.json file or its parent directory")
     parser.add_argument("output_dir_positional", nargs="?", help="Output COLMAP sparse model directory")
     parser.add_argument("--transforms", default=None, help="Input transforms.json file or its parent directory")
-    parser.add_argument("--output_dir", "--output-dir", default=None, help="Output COLMAP sparse model directory")
-    parser.add_argument("--image_dir", "--image-dir", default="./images", help="Prefix stripped from frame file paths")
+    parser.add_argument("--output-dir", default=None, help="Output COLMAP sparse model directory")
+    parser.add_argument("--image-dir", default="./images", help="Prefix stripped from frame file paths")
     parser.add_argument("--txt", action="store_true", help="Write COLMAP text model files instead of binary files")
     parser.add_argument("--force", action="store_true", help="Overwrite existing COLMAP model files in the output directory")
     parser.add_argument(

@@ -53,12 +53,12 @@ colmap2transforms --drop-frames=1,2,4-5,8-10,100,1524 sparse/ transforms.json
 ```
 
 ```bash
-colmap2transforms --createPly sparse_pc.ply sparse/ transforms.json
+colmap2transforms --create-ply sparse_pc.ply sparse/ transforms.json
 ```
 
 By default this command refuses to overwrite an existing output file. Use `--force` to replace it.
 
-When `--createPly` / `--create-ply` is provided, the command also writes a nerfstudio-compatible ASCII sparse point cloud PLY from COLMAP's `points3D` data and records `ply_file_path` in `transforms.json`.
+When `--create-ply` is provided, the command also writes a nerfstudio-compatible ASCII sparse point cloud PLY from COLMAP's `points3D` data and records `ply_file_path` in `transforms.json`.
 
 ### `transforms2colmap`
 

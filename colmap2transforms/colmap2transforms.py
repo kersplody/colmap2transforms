@@ -200,15 +200,13 @@ def entrypoint() -> None:
     parser.add_argument("model_dir_positional", nargs="?", help="COLMAP model directory containing cameras/images as .bin or .txt files")
     parser.add_argument("output_file_positional", nargs="?", help="Output transforms.json file or directory")
     parser.add_argument(
-        "--model_dir",
         "--model-dir",
         default=None,
         help="COLMAP model directory containing cameras/images as .bin or .txt files; .bin is preferred",
     )
-    parser.add_argument("--output_file", "--output-file", default=None, help="Output transforms.json file or directory")
-    parser.add_argument("--image_dir", "--image-dir", default="./images", help="Prefix used for frame file paths")
+    parser.add_argument("--output-file", default=None, help="Output transforms.json file or directory")
+    parser.add_argument("--image-dir", default="./images", help="Prefix used for frame file paths")
     parser.add_argument(
-        "--createPly",
         "--create-ply",
         default=None,
         help="Optional PLY file path for exporting COLMAP sparse points, e.g. sparse_pc.ply",
@@ -220,13 +218,11 @@ def entrypoint() -> None:
     )
     parser.add_argument("--force", action="store_true", help="Overwrite an existing output file")
     parser.add_argument(
-        "--keep_original_world_coordinate",
         "--keep-original-world-coordinate",
         action="store_true",
         help="Keep COLMAP world coordinates instead of applying the nerfstudio z-up transform",
     )
     parser.add_argument(
-        "--use_single_camera_mode",
         "--use-single-camera-mode",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -244,7 +240,7 @@ def entrypoint() -> None:
         image_dir=args.image_dir,
         keep_original_world_coordinate=args.keep_original_world_coordinate,
         use_single_camera_mode=args.use_single_camera_mode,
-        create_ply=args.createPly,
+        create_ply=args.create_ply,
         drop_frames=args.drop_frames,
         force=args.force,
     ).main()

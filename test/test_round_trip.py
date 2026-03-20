@@ -87,6 +87,28 @@ class RoundTripTest(unittest.TestCase):
             self.assertIn("error:", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
 
+    def test_cli_rejects_legacy_flag_spellings(self) -> None:
+        cases = [
+            ("colmap2transforms.colmap2transforms", "--model_dir"),
+            ("colmap2transforms.colmap2transforms", "--output_file"),
+            ("colmap2transforms.colmap2transforms", "--image_dir"),
+            ("colmap2transforms.colmap2transforms", "--keep_original_world_coordinate"),
+            ("colmap2transforms.colmap2transforms", "--use_single_camera_mode"),
+            ("colmap2transforms.colmap2transforms", "--createPly"),
+            ("colmap2transforms.transforms2colmap", "--output_dir"),
+            ("colmap2transforms.transforms2colmap", "--image_dir"),
+        ]
+        for module_name, legacy_flag in cases:
+            result = subprocess.run(
+                [sys.executable, "-m", module_name, legacy_flag],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(legacy_flag, result.stderr)
+
     def test_colmap2transforms_refuses_to_overwrite_without_force(self) -> None:
         source_path = _source_path()
         with tempfile.TemporaryDirectory() as temp_dir:
