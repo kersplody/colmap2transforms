@@ -58,7 +58,7 @@ colmap2transforms --create-ply sparse_pc.ply sparse/ transforms.json
 
 By default this command refuses to overwrite an existing output file. Use `--force` to replace it.
 
-When `--create-ply` is provided, the command also writes a nerfstudio-compatible ASCII sparse point cloud PLY from COLMAP's `points3D` data and records `ply_file_path` in `transforms.json`.
+When `--create-ply` is provided, the command also writes a nerfstudio-compatible binary little-endian sparse point cloud PLY from COLMAP's `points3D` data and records `ply_file_path` in `transforms.json`.
 
 ### `transforms2colmap`
 

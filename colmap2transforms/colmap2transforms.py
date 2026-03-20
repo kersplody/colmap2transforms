@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
+import numpy as np
 import pycolmap
 
 from .common import (
@@ -62,30 +63,41 @@ def create_ply_from_colmap(
     ply_file: Path,
     keep_original_world_coordinate: bool = False,
 ) -> None:
-    """Write COLMAP sparse points to an ASCII PLY file using nerfstudio's layout."""
+    """Write COLMAP sparse points to a binary little-endian PLY file."""
     reconstruction = _load_reconstruction(model_dir)
     points3d = list(_iter_points3d(reconstruction))
+    vertices = np.empty(
+        len(points3d),
+        dtype=[
+            ("x", "<f4"),
+            ("y", "<f4"),
+            ("z", "<f4"),
+            ("red", "u1"),
+            ("green", "u1"),
+            ("blue", "u1"),
+        ],
+    )
+
+    for index, point in enumerate(points3d):
+        x, y, z = point.xyz
+        if not keep_original_world_coordinate:
+            y, z = z, -y
+        r, g, b = point.color
+        vertices[index] = (x, y, z, r, g, b)
 
     ply_file.parent.mkdir(parents=True, exist_ok=True)
-    with ply_file.open("w", encoding="utf-8") as f:
-        f.write("ply\n")
-        f.write("format ascii 1.0\n")
-        f.write(f"element vertex {len(points3d)}\n")
-        f.write("property float x\n")
-        f.write("property float y\n")
-        f.write("property float z\n")
-        f.write("property uint8 red\n")
-        f.write("property uint8 green\n")
-        f.write("property uint8 blue\n")
-        f.write("end_header\n")
-
-        for point in points3d:
-            x, y, z = point.xyz
-            if not keep_original_world_coordinate:
-                y, z = z, -y
-
-            r, g, b = point.color
-            f.write(f"{x:8f} {y:8f} {z:8f} {r} {g} {b}\n")
+    with ply_file.open("wb") as f:
+        f.write(b"ply\n")
+        f.write(b"format binary_little_endian 1.0\n")
+        f.write(f"element vertex {len(vertices)}\n".encode("ascii"))
+        f.write(b"property float x\n")
+        f.write(b"property float y\n")
+        f.write(b"property float z\n")
+        f.write(b"property uchar red\n")
+        f.write(b"property uchar green\n")
+        f.write(b"property uchar blue\n")
+        f.write(b"end_header\n")
+        vertices.tofile(f)
 
 
 def create_transforms_data(

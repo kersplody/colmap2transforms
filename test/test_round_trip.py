@@ -138,7 +138,9 @@ class RoundTripTest(unittest.TestCase):
                 CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply").main()
 
             CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply", force=True).main()
-            self.assertIn("element vertex 0", ply_file.read_text(encoding="utf-8"))
+            ply_bytes = ply_file.read_bytes()
+            self.assertIn(b"format binary_little_endian 1.0", ply_bytes)
+            self.assertIn(b"element vertex 0", ply_bytes)
 
     def test_transforms2colmap_refuses_to_overwrite_without_force(self) -> None:
         source_path = _source_path()
@@ -296,11 +298,11 @@ class RoundTripTest(unittest.TestCase):
             CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply").main()
 
             transforms = json.loads(output_file.read_text(encoding="utf-8"))
-            ply_text = ply_file.read_text(encoding="utf-8")
+            ply_bytes = ply_file.read_bytes()
             self.assertEqual(transforms["ply_file_path"], "sparse_pc.ply")
             self.assertTrue(ply_file.exists())
-            self.assertIn("format ascii 1.0", ply_text)
-            self.assertIn("element vertex 0", ply_text)
+            self.assertIn(b"format binary_little_endian 1.0", ply_bytes)
+            self.assertIn(b"element vertex 0", ply_bytes)
 
 
 if __name__ == "__main__":
