@@ -102,6 +102,22 @@ class RoundTripTest(unittest.TestCase):
             CreateTransforms(model_dir=model_dir, output_file=output_file, force=True).main()
             self.assertIn('"frames"', output_file.read_text(encoding="utf-8"))
 
+    def test_colmap2transforms_create_ply_refuses_to_overwrite_without_force(self) -> None:
+        source_path = _source_path()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            output_file = temp_dir_path / "transforms.json"
+            ply_file = temp_dir_path / "sparse_pc.ply"
+            create_colmap_data(source_path, model_dir)
+            ply_file.write_text("existing", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply").main()
+
+            CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply", force=True).main()
+            self.assertIn("element vertex 0", ply_file.read_text(encoding="utf-8"))
+
     def test_transforms2colmap_refuses_to_overwrite_without_force(self) -> None:
         source_path = _source_path()
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -244,6 +260,25 @@ class RoundTripTest(unittest.TestCase):
             [_image_name(frame["file_path"]) for frame in round_tripped["frames"]],
             [_image_name(frame["file_path"]) for frame in expected_frames],
         )
+
+    def test_colmap2transforms_create_ply_writes_file_and_metadata(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            output_file = temp_dir_path / "nested" / "transforms.json"
+            ply_file = output_file.parent / "sparse_pc.ply"
+
+            create_colmap_data(source_path, model_dir)
+            CreateTransforms(model_dir=model_dir, output_file=output_file, create_ply="sparse_pc.ply").main()
+
+            transforms = json.loads(output_file.read_text(encoding="utf-8"))
+            ply_text = ply_file.read_text(encoding="utf-8")
+            self.assertEqual(transforms["ply_file_path"], "sparse_pc.ply")
+            self.assertTrue(ply_file.exists())
+            self.assertIn("format ascii 1.0", ply_text)
+            self.assertIn("element vertex 0", ply_text)
 
 
 if __name__ == "__main__":

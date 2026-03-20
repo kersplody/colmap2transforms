@@ -23,7 +23,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 import pycolmap
 
@@ -48,6 +48,44 @@ def _load_reconstruction(model_dir: Path) -> pycolmap.Reconstruction:
             f"Expected either {cameras_bin} and {images_bin} or {cameras_txt} and {images_txt} to exist"
         )
     return pycolmap.Reconstruction(model_dir)
+
+
+def _iter_points3d(reconstruction: pycolmap.Reconstruction) -> Iterable[Any]:
+    points3d = reconstruction.points3D
+    if hasattr(points3d, "values"):
+        return points3d.values()
+    return points3d
+
+
+def create_ply_from_colmap(
+    model_dir: Path,
+    ply_file: Path,
+    keep_original_world_coordinate: bool = False,
+) -> None:
+    """Write COLMAP sparse points to an ASCII PLY file using nerfstudio's layout."""
+    reconstruction = _load_reconstruction(model_dir)
+    points3d = list(_iter_points3d(reconstruction))
+
+    ply_file.parent.mkdir(parents=True, exist_ok=True)
+    with ply_file.open("w", encoding="utf-8") as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write(f"element vertex {len(points3d)}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("property uint8 red\n")
+        f.write("property uint8 green\n")
+        f.write("property uint8 blue\n")
+        f.write("end_header\n")
+
+        for point in points3d:
+            x, y, z = point.xyz
+            if not keep_original_world_coordinate:
+                y, z = z, -y
+
+            r, g, b = point.color
+            f.write(f"{x:8f} {y:8f} {z:8f} {r} {g} {b}\n")
 
 
 def create_transforms_data(
@@ -118,6 +156,7 @@ class CreateTransforms:
     image_dir: str = "./images"
     keep_original_world_coordinate: bool = False
     use_single_camera_mode: bool = True
+    create_ply: str | None = None
     drop_frames: str | None = None
     force: bool = False
 
@@ -135,6 +174,19 @@ class CreateTransforms:
             use_single_camera_mode=self.use_single_camera_mode,
             drop_frames=self.drop_frames,
         )
+        if self.create_ply:
+            ply_path = Path(self.create_ply)
+            if not ply_path.is_absolute():
+                ply_path = output_file.parent / ply_path
+                transforms["ply_file_path"] = self.create_ply
+            else:
+                transforms["ply_file_path"] = str(ply_path)
+            ensure_output_file_writable(ply_path, force=self.force)
+            create_ply_from_colmap(
+                model_dir=self.model_dir,
+                ply_file=ply_path,
+                keep_original_world_coordinate=self.keep_original_world_coordinate,
+            )
         output_file.write_text(json.dumps(transforms, indent=4), encoding="utf-8")
         print(f"Saved transforms to {output_file}")
 
@@ -155,6 +207,12 @@ def entrypoint() -> None:
     )
     parser.add_argument("--output_file", "--output-file", default=None, help="Output transforms.json file or directory")
     parser.add_argument("--image_dir", "--image-dir", default="./images", help="Prefix used for frame file paths")
+    parser.add_argument(
+        "--createPly",
+        "--create-ply",
+        default=None,
+        help="Optional PLY file path for exporting COLMAP sparse points, e.g. sparse_pc.ply",
+    )
     parser.add_argument(
         "--drop-frames",
         default=None,
@@ -186,6 +244,7 @@ def entrypoint() -> None:
         image_dir=args.image_dir,
         keep_original_world_coordinate=args.keep_original_world_coordinate,
         use_single_camera_mode=args.use_single_camera_mode,
+        create_ply=args.createPly,
         drop_frames=args.drop_frames,
         force=args.force,
     ).main()
