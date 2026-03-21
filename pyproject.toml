@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "colmap2transforms"
 version = "0.1.0"
-description = "Utilities for converting between COLMAP sparse models and transforms.json files."
+description = "Utilities for converting between COLMAP sparse models, transforms.json files, and RealityCapture XMP sidecars."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
     { name = "Christopher Howard", email = "cehoward@kersplody.com" },
 ]
-keywords = ["colmap", "nerfstudio", "transforms", "photogrammetry", "3d-vision"]
+keywords = ["colmap", "nerfstudio", "transforms", "xmp", "realitycapture", "photogrammetry", "3d-vision"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -46,6 +46,7 @@ test = [
 [project.scripts]
 colmap2transforms = "colmap2transforms.colmap2transforms:entrypoint"
 transforms2colmap = "colmap2transforms.transforms2colmap:entrypoint"
+colmap2xmp = "colmap2transforms.colmap2xmp:entrypoint"
 
 [tool.setuptools]
 packages = ["colmap2transforms"]

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from colmap2transforms.common import extract_frame_number, parse_frame_drop_spec
 from colmap2transforms.colmap2transforms import CreateTransforms, create_transforms_data
+from colmap2transforms.colmap2xmp import CreateXmp, create_xmp_files
 from colmap2transforms.transforms2colmap import CreateColmap, create_colmap_data
 
 
@@ -23,12 +25,61 @@ def _source_data() -> dict:
     return json.loads(_source_path().read_text(encoding="utf-8"))
 
 
+def _test_data_dir() -> Path:
+    return Path(__file__).with_name("test_data")
+
+
 def _image_name(path: str) -> str:
     return path.replace("\\", "/").split("/")[-1]
 
 
 def _remaining_frames(source: dict, dropped: set[int]) -> list[dict]:
     return [frame for frame in source["frames"] if extract_frame_number(frame["file_path"]) not in dropped]
+
+
+def _parse_xmp(path: Path) -> tuple[dict[str, str], dict[str, list[float]]]:
+    namespaces = {
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "xcr": "http://www.capturingreality.com/ns/xcr/1.1#",
+    }
+    root = ET.fromstring(path.read_text(encoding="utf-8"))
+    description = root.find(".//rdf:Description", namespaces)
+    if description is None:
+        raise AssertionError(f"Missing rdf:Description in {path}")
+
+    attrs = {
+        key.split("}", 1)[1]: value
+        for key, value in description.attrib.items()
+        if key.startswith("{http://www.capturingreality.com/ns/xcr/1.1#}")
+    }
+    vectors: dict[str, list[float]] = {}
+    for tag in ("Rotation", "Position", "DistortionCoeficients"):
+        node = description.find(f"xcr:{tag}", namespaces)
+        if node is None or node.text is None:
+            raise AssertionError(f"Missing xcr:{tag} in {path}")
+        vectors[tag] = [float(value) for value in node.text.split()]
+    return attrs, vectors
+
+
+def _assert_xmp_matches(testcase: unittest.TestCase, actual_path: Path, expected_path: Path) -> None:
+    actual_attrs, actual_vectors = _parse_xmp(actual_path)
+    expected_attrs, expected_vectors = _parse_xmp(expected_path)
+
+    float_attrs = {"FocalLength35mm", "Skew", "AspectRatio", "PrincipalPointU", "PrincipalPointV"}
+    testcase.assertEqual(set(actual_attrs), set(expected_attrs))
+    for key, expected_value in expected_attrs.items():
+        actual_value = actual_attrs[key]
+        if key in float_attrs:
+            testcase.assertAlmostEqual(float(actual_value), float(expected_value), places=9)
+        else:
+            testcase.assertEqual(actual_value, expected_value)
+
+    testcase.assertEqual(set(actual_vectors), set(expected_vectors))
+    for key, expected_values in expected_vectors.items():
+        actual_values = actual_vectors[key]
+        testcase.assertEqual(len(actual_values), len(expected_values))
+        for actual_value, expected_value in zip(actual_values, expected_values):
+            testcase.assertAlmostEqual(actual_value, expected_value, places=9)
 
 
 def _assert_round_trip_matches(
@@ -59,8 +110,13 @@ class RoundTripTest(unittest.TestCase):
         expected_examples = {
             "colmap2transforms.colmap2transforms": "colmap2transforms colmap/sparse/0 transforms.json",
             "colmap2transforms.transforms2colmap": "transforms2colmap transforms.json colmap/sparse/0",
+            "colmap2transforms.colmap2xmp": "colmap2xmp colmap/sparse/0 --image-dir images",
         }
-        for module_name in ("colmap2transforms.colmap2transforms", "colmap2transforms.transforms2colmap"):
+        for module_name in (
+            "colmap2transforms.colmap2transforms",
+            "colmap2transforms.transforms2colmap",
+            "colmap2transforms.colmap2xmp",
+        ):
             result = subprocess.run(
                 [sys.executable, "-m", module_name],
                 cwd=Path(__file__).resolve().parents[1],
@@ -74,7 +130,11 @@ class RoundTripTest(unittest.TestCase):
             self.assertNotIn("Traceback", result.stderr)
 
     def test_cli_bad_args_print_help(self) -> None:
-        for module_name in ("colmap2transforms.colmap2transforms", "colmap2transforms.transforms2colmap"):
+        for module_name in (
+            "colmap2transforms.colmap2transforms",
+            "colmap2transforms.transforms2colmap",
+            "colmap2transforms.colmap2xmp",
+        ):
             result = subprocess.run(
                 [sys.executable, "-m", module_name, "--definitely-not-a-real-flag"],
                 cwd=Path(__file__).resolve().parents[1],
@@ -155,6 +215,26 @@ class RoundTripTest(unittest.TestCase):
             self.assertTrue((model_dir / "cameras.txt").exists())
             self.assertFalse((model_dir / "cameras.bin").exists())
 
+    def test_colmap2xmp_refuses_to_overwrite_without_force(self) -> None:
+        source_path = _source_path()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            image_dir = temp_dir_path / "images"
+            output_dir = temp_dir_path / "xmp"
+
+            create_colmap_data(source_path, model_dir)
+            image_dir.mkdir()
+            output_dir.mkdir()
+            existing = output_dir / "frame_00001.xmp"
+            existing.write_text("existing", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                CreateXmp(model_dir=model_dir, image_dir=image_dir, output_dir=output_dir, skip_image_check=True).main()
+
+            CreateXmp(model_dir=model_dir, image_dir=image_dir, output_dir=output_dir, skip_image_check=True, force=True).main()
+            self.assertIn("x:xmpmeta", existing.read_text(encoding="utf-8"))
+
     def test_drop_frame_helpers_match_zero_padded_names(self) -> None:
         self.assertEqual(parse_frame_drop_spec("1,2,4-5"), {1, 2, 4, 5})
         self.assertEqual(extract_frame_number("images_00001.png"), 1)
@@ -210,6 +290,53 @@ class RoundTripTest(unittest.TestCase):
             round_tripped = create_transforms_data(model_dir, keep_original_world_coordinate=True)
 
         self.assertEqual(len(round_tripped["frames"]), 1464)
+
+    def test_xmp_generation_prefers_binary_model(self) -> None:
+        source_path = _source_path()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            model_dir = temp_dir_path / "sparse"
+            output_dir = temp_dir_path / "xmp"
+            image_dir = temp_dir_path / "images"
+
+            create_colmap_data(source_path, model_dir)
+            (model_dir / "cameras.txt").write_text("not a valid camera model\n", encoding="utf-8")
+            (model_dir / "images.txt").write_text("not a valid image model\n", encoding="utf-8")
+
+            written_count = create_xmp_files(
+                model_dir=model_dir,
+                output_dir=output_dir,
+                image_dir=image_dir,
+                skip_image_check=True,
+            )
+
+            self.assertEqual(written_count, 1464)
+            self.assertTrue((output_dir / "frame_00001.xmp").exists())
+            self.assertIn("xcr:Rotation", (output_dir / "frame_00001.xmp").read_text(encoding="utf-8"))
+
+    def test_colmap2xmp_matches_sample_xmp_for_reduced_binary_model(self) -> None:
+        model_dir = _test_data_dir()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            output_dir = temp_dir_path / "xmp"
+            image_dir = temp_dir_path / "images"
+
+            written_count = create_xmp_files(
+                model_dir=model_dir,
+                output_dir=output_dir,
+                image_dir=image_dir,
+                skip_image_check=True,
+            )
+
+            self.assertEqual(written_count, 2)
+            for name in ("frame_00001.xmp", "frame_00002.xmp"):
+                _assert_xmp_matches(
+                    self,
+                    output_dir / name,
+                    _test_data_dir() / name,
+                )
 
     def test_missing_drop_frames_warns_for_transforms_to_colmap(self) -> None:
         source_path = _source_path()

@@ -25,4 +25,11 @@ def create_colmap_data(*args, **kwargs):
 
     return _create_colmap_data(*args, **kwargs)
 
-__all__ = ["create_colmap_data", "create_transforms_data"]
+
+def create_xmp_files(*args, **kwargs):
+    from .colmap2xmp import create_xmp_files as _create_xmp_files
+
+    return _create_xmp_files(*args, **kwargs)
+
+
+__all__ = ["create_colmap_data", "create_transforms_data", "create_xmp_files"]
