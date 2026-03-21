@@ -283,8 +283,17 @@ class CreateXmp:
 
     def main(self) -> None:
         model_dir = self.model_dir
-        image_dir = self.image_dir if self.image_dir != Path(".") else model_dir.parent
-        output_dir = self.output_dir if self.output_dir != Path(".") else image_dir
+        if self.output_dir != Path("."):
+            output_dir = self.output_dir
+        elif self.image_dir != Path("."):
+            output_dir = self.image_dir
+        else:
+            output_dir = model_dir.parent
+
+        if self.image_dir != Path("."):
+            image_dir = self.image_dir
+        else:
+            image_dir = output_dir
         image_ext = self.image_ext
         if image_ext is not None and image_ext.strip():
             image_ext = image_ext.strip()
@@ -310,7 +319,7 @@ class CreateXmp:
 def entrypoint() -> None:
     parser = HelpOnErrorArgumentParser(
         description=__doc__,
-        epilog="Typical usage:\n  colmap2xmp colmap/sparse/0 --image-dir images",
+        epilog="Typical usage:\n  colmap2xmp colmap/sparse/0 images",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("model_dir_positional", nargs="?", help="COLMAP model directory containing cameras/images as .bin or .txt files")
@@ -324,7 +333,7 @@ def entrypoint() -> None:
     parser.add_argument(
         "--image-dir",
         default=None,
-        help="Directory containing source images; defaults to the parent of the COLMAP model directory",
+        help="Directory containing source images; defaults to --output-dir when provided, otherwise the parent of the COLMAP model directory",
     )
     parser.add_argument(
         "--pose-prior",

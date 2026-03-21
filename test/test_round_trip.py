@@ -110,7 +110,7 @@ class RoundTripTest(unittest.TestCase):
         expected_examples = {
             "colmap2transforms.colmap2transforms": "colmap2transforms colmap/sparse/0 transforms.json",
             "colmap2transforms.transforms2colmap": "transforms2colmap transforms.json colmap/sparse/0",
-            "colmap2transforms.colmap2xmp": "colmap2xmp colmap/sparse/0 --image-dir images",
+            "colmap2transforms.colmap2xmp": "colmap2xmp colmap/sparse/0 images",
         }
         for module_name in (
             "colmap2transforms.colmap2transforms",
@@ -234,6 +234,21 @@ class RoundTripTest(unittest.TestCase):
 
             CreateXmp(model_dir=model_dir, image_dir=image_dir, output_dir=output_dir, skip_image_check=True, force=True).main()
             self.assertIn("x:xmpmeta", existing.read_text(encoding="utf-8"))
+
+    def test_colmap2xmp_uses_output_dir_as_default_image_dir(self) -> None:
+        model_dir = _test_data_dir()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            images_dir = temp_dir_path / "images"
+            images_dir.mkdir()
+            for name in ("frame_00001.png", "frame_00002.png"):
+                (images_dir / name).write_bytes(b"")
+
+            CreateXmp(model_dir=model_dir, output_dir=images_dir).main()
+
+            self.assertTrue((images_dir / "frame_00001.xmp").exists())
+            self.assertTrue((images_dir / "frame_00002.xmp").exists())
 
     def test_drop_frame_helpers_match_zero_padded_names(self) -> None:
         self.assertEqual(parse_frame_drop_spec("1,2,4-5"), {1, 2, 4, 5})
