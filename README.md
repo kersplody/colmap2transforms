@@ -1,11 +1,12 @@
 # colmap2transforms
 
-Utilities for converting between COLMAP sparse models and `transforms.json`.
+Utilities for converting between COLMAP sparse models, `transforms.json`, and RealityCapture XMP sidecars.
 
-The package installs two CLI tools:
+The package installs three CLI tools:
 
 - `colmap2transforms`
 - `transforms2colmap`
+- `colmap2xmp`
 
 ## Install
 
@@ -85,6 +86,46 @@ transforms2colmap --drop-frames=1,2,4-5,8-10,100,1524 transforms.json sparse/
 ```
 
 By default this command refuses to overwrite existing COLMAP model files in the output directory. Use `--force` to replace them.
+
+### `colmap2xmp`
+
+Create RealityCapture-compatible `.xmp` sidecars from a COLMAP sparse model.
+
+The input model may be text or binary:
+
+- `cameras.bin` / `images.bin`
+- `cameras.txt` / `images.txt`
+
+If both exist, binary is preferred.
+
+Examples:
+
+```bash
+colmap2xmp colmap/sparse/0 images
+```
+
+```bash
+colmap2xmp colmap/sparse/0 xmp --image-dir images
+```
+
+```bash
+colmap2xmp --skip-image-check colmap/sparse/0 images
+```
+
+```bash
+colmap2xmp --pose-prior locked --calibration-prior exact colmap/sparse/0 images
+```
+
+The command uses positional `INPUT OUTPUT` ordering.
+
+When `--image-dir` is omitted:
+
+- if `OUTPUT` is provided, it is also used as the source image directory
+- otherwise the source image directory defaults to the parent of the COLMAP model directory
+
+By default this command skips writing sidecars for images that do not exist in the source image directory. Use `--skip-image-check` to write `.xmp` files without checking for the original image files.
+
+By default this command refuses to overwrite existing `.xmp` files. Use `--force` to replace them.
 
 ## Drop Frames
 
